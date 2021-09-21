@@ -1,0 +1,43 @@
+{
+  "object": {
+    "pins": [
+      {
+        "package": "SortedArray",
+        "repositoryURL": "https://github.com/ole/SortedArray.git",
+        "state": {
+          "branch": null,
+          "revision": "a521f750fccb0743ad082b7cb890a62e132c4fbf",
+          "version": "0.7.0"
+        }
+      },
+      {
+        "package": "Atomic",
+        "repositoryURL": "https://github.com/RougeWare/Swift-Atomic.git",
+        "state": {
+          "branch": null,
+          "revision": "9e272359c739faefcbe4d45a42a6ad09afb8d13e",
+          "version": "0.2.0"
+        }
+      },
+      {
+        "package": "FunctionTools",
+        "repositoryURL": "https://github.com/RougeWare/Swift-Function-Tools.git",
+        "state": {
+          "branch": null,
+          "revision": "0bd76ca2c00120acf7ff840b5dcc1e700870ae22",
+          "version": "1.2.3"
+        }
+      },
+      {
+        "package": "SemVer",
+        "repositoryURL": "https://github.com/RougeWare/Swift-SemVer.git",
+        "state": {
+          "branch": null,
+          "revision": "a82c49bf66f24bbe88a5e732c6f8304c6d4edf84",
+          "version": "3.0.0-Alpha.7"
+        }
+      }
+    ]
+  },
+  "version": 1
+}
