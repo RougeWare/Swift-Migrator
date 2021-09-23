@@ -47,7 +47,7 @@ public struct Migrator {
     /// Creates a new DataMigrator
     ///
     /// - Parameters:
-    ///   - family:               Identifies the family of migrators which can transition a kind of data.
+    ///   - domain:               Identifies the domain of migrators which can transition a kind of data.
     ///
     ///     This value is necessary for chaining together multiple migrators. For example, you might have two sets of migrators: five for the User Profile and three for the Metadata Database. Both of these might migrate a `[String : Any]` dictionary, but it wouldn't make sense to migrate MyApp `1.2.3`'s User Info to MyApp `2.0.0`'s Metadata Database. This ensures that such a thing never happens.
     ///

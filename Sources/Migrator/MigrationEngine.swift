@@ -22,8 +22,8 @@ public final class MigrationEngine {
     
     private var sortedMigratorPool = SortedArray<Migrator>(areInIncreasingOrder: >)
     
-    private var migrationStartupCoordinatorQueue: DispatchQueue
-    private var migrationPerformerQueue: DispatchQueue
+    private let migrationStartupCoordinatorQueue: DispatchQueue
+    private let migrationPerformerQueue: DispatchQueue
     
     private var isMigrationUnderway = false
     
@@ -48,7 +48,7 @@ public extension MigrationEngine {
     /// Registers the given migrator with this engine, so that it will be considered when performing migration.
     ///
     /// If the given migrator has already been registered, it **isn't** added again.
-    /// Two migrators are considered equivalent if they are in the same family, have the same old version, and have the same new version.
+    /// Two migrators are considered equivalent if they are in the same domain, have the same old version, and have the same new version.
     ///
     /// - Parameter migrator: The migrator to consider when performing migration
     func register(migrator: Migrator) {
@@ -98,7 +98,7 @@ public extension MigrationEngine {
                 }
             
             
-            let migratorQueues = assembleMigratorQueues(from: oldExecutableVersion, to: newExecutableVersion)
+            let migratorQueues = assembleMigratorQueues(from: oldExecutableVersion)
             
             for migratorQueue in migratorQueues {
                 migratorQueue.performMigration(publishingUpdatesTo: self.$progress)
@@ -151,5 +151,27 @@ private extension MigrationEngine {
     func createNewProgressPublisher() -> ProgressPublisher {
         _progress = .init(initialValue: .starting)
         return $progress.eraseToAnyPublisher()
+    }
+    
+    
+    func assembleMigratorQueues(from oldExecutableVersion: SemVer) -> [MigratorChainQueue] {
+        var queues = [Migrator.Domain : MigratorChainQueue]()
+        
+        for migrator in self.sortedMigratorPool {
+            if let existingQueue = queues[migrator.migratorDomain] {
+                switch existingQueue.enqueueOldestIfAppropriate(migrator) {
+                case .enqueuedSuccessfully:
+                    continue
+                    
+                case .unableToEnqueue:
+                    
+                }
+            }
+            else {
+                let chainQueue = MigratorChainQueue(startingMigrator: migrator)
+            }
+        }
+        
+        return Array(queues.values)
     }
 }

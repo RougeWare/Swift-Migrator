@@ -11,14 +11,15 @@ import SemVer
 
 
 
-/// Performs chained migrations upon a single migrator family
+/// Performs chained migrations upon a single migrator domain
 internal final class MigratorChainQueue {
     
-    private let family: Migrator.Domain
+    private let domain: Migrator.Domain
     private let oldExecutableVersion: SemVer
-    private let newExecutableVersion: SemVer
     
     private var orderedMigratorsWithNextOperationAsLastElement = [Migrator]()
+    
+    private let migrationStartupCoordinatorQueue: DispatchQueue
     
     @Published
     private var progress = Progress.notStarted
@@ -26,66 +27,71 @@ internal final class MigratorChainQueue {
     
     
     internal init(
-        family: Migrator.Domain,
-        oldExecutableVersion: SemVer,
-        newExecutableVersion: SemVer)
+        domain: Migrator.Domain,
+        oldExecutableVersion: SemVer)
     {
-        self.family = family
+        self.domain = domain
         self.oldExecutableVersion = oldExecutableVersion
-        self.newExecutableVersion = newExecutableVersion
+        self.migrationStartupCoordinatorQueue = DispatchQueue(label: "MigratorChainQueue startup coordinator queue for domain \(domain)")
+    }
+    
+    
+    internal convenience init(startingMigrator: Migrator) {
+        self.init(
+            domain: startingMigrator.migratorDomain,
+            oldExecutableVersion: startingMigrator.oldExecutableVersion
+        )
+        
+        switch self.enqueueOldestIfAppropriate(migrator) {
+        case .enqueuedSuccessfully:
+            continue
+            
+        case .unableToEnqueue:
+            assertionFailure("Migrator's own old version doesn't fit criteria for chain queue based on that migrator")
+        }
     }
 }
 
 
 
+// MARK: - Enqueue
+
 internal extension MigratorChainQueue {
+    
+    /// Enqueues all the given migrators, silentlyignoring those which were not enqueued
+    ///
+    /// - Parameter migrators: The migrators to be added
+    func enqueueAllAsAppropriate(_ migrators: [Migrator]) {
+        for migrator in migrators {
+            _ = enqueueOldestIfAppropriate(migrator)
+        }
+    }
+    
     
     /// Attempts to enqueue the given migrator into this chain queue
     ///
-    /// - Parameter migrator: The migrator to be enqueued
-    /// - Returns: A result describing
-    func enqueueOldestIfAppropriate(_ migrator: Migrator) -> EnqueueResult {
-        
-        guard !isComplete else {
-            // Cannot enqueue anything into a complete chain queue
-            return .unableToEnqueue
-        }
+    /// - Parameter candidateMigrator: The migrator to be enqueued
+    ///
+    /// - Returns: A result describing whether the migrator was enqueued
+    func enqueueOldestIfAppropriate(_ candidateMigrator: Migrator) -> EnqueueResult {
         
         guard case .notStarted = progress else {
             // Cannot enqueue after migration has started
             return .unableToEnqueue
         }
         
+        // If it's the first one being enqueued, use this chain queue's old version as if it was the new version of a previous migrator.
+        // Else, use the target version of the newest existing migrator.
+        let previousMigratorNewVersion = self.newestMigrator?.newExecutableVersion ?? self.oldExecutableVersion
         
-        if let newest = self.newestMigrator {
-            // It's not the first one, so make sure its old version matches the new version of the next-oldest.
-            if migrator.oldExecutableVersion == newest.newExecutableVersion {
-                // Also make sure its new version doesn't exceed our own
-                if migrator.newExecutableVersion <= newExecutableVersion {
-                    // Safe to add!
-                }
-            }
+        // Make sure the candidate's old version matches the new version of the next-oldest.
+        if previousMigratorNewVersion == candidateMigrator.oldExecutableVersion {
+            // Safe to add!
+            return push(candidateMigrator)
         }
         else {
-            // It's the first one being enqueued
-            if migrator.oldExecutableVersion == oldExecutableVersion,
-               migrator.newExecutableVersion <= newExecutableVersion {
-                // It's the first one & its version is the oldest. Put it in!
-                push(migrator)
-                
-                if migrator.newExecutableVersion == newExecutableVersion {
-                    // Woo! No more to do!
-                    return .enqueuedAndQueueIsComplete
-                }
-                else {
-                    // There's still room for more migrators if necessary
-                    return .enqueuedAwaitingNext
-                }
-            }
-            else {
-                // It's the first one being inserted and its version number is not the oldest. Can't use it
-                return .unableToEnqueue
-            }
+            // Each migrator needs to start where another left off, so this one can't be added
+            return .unableToEnqueue
         }
     }
     
@@ -94,12 +100,10 @@ internal extension MigratorChainQueue {
     /// The result of enqueuing a migrator into a MigratorQueue
     enum EnqueueResult {
         
-        /// The migrator has been enqueued and the queue is awaiting the next migrator. Migration can still be performed without completing a queue; it simply will migrate to the newest version it has and stop
-        case enqueuedAwaitingNext
+        /// The migrator has been enqueued and the queue is awaiting the next migrator.
+        case enqueuedSuccessfully
         
-        /// The migrator has been enqueued and completes the chain from the old version to the new one
-        case enqueuedAndQueueIsComplete
-        
+        /// For some reason, the migrator couldn't be added. See documentation for more information.
         case unableToEnqueue
     }
     
@@ -135,24 +139,9 @@ internal extension MigratorChainQueue {
 
 
 
+// MARK: Private
+
 private extension MigratorChainQueue {
-    
-    /// Determines whether this queue is "complete", meaning its oldest migrator migrates from the old version and its newest migrator migrates to the new version
-    var isComplete: Bool {
-        if let newest = self.newestMigrator {
-            // We'll consider it complete even through we don't know the oldest, since we've already checked that the
-            // oldest ever added matches the old version of this migrator.
-            //
-            // Also, if this is ever needed in the middle of migration, ignoring the oldest also allows us to recognize
-            // that the queue was completed when migration started
-            return newest.newExecutableVersion == self.newExecutableVersion
-        }
-        else {
-            // It's empty, so it's not complete
-            return false
-        }
-    }
-    
     
     /// A peek at the oldest migrator in the queue
     var oldestMigrator: Migrator? {
@@ -170,7 +159,93 @@ private extension MigratorChainQueue {
     /// If you're unsure, use `enqueueOldestIfAppropriate(_:)` instead.
     ///
     /// - Parameter migrator: The migrator to be blindly pushed onto this queue
-    func push(_ migrator: Migrator) {
+    func push(_ migrator: Migrator) -> EnqueueResult {
         orderedMigratorsWithNextOperationAsLastElement.insert(migrator, at: orderedMigratorsWithNextOperationAsLastElement.startIndex)
+        
+        return .enqueuedSuccessfully
+    }
+    
+    
+    /// Blindly pops a migrator off this queue.
+    /// - Returns: The next migrator in this queue, or `nil` if the queue is empty
+    func pop() -> Migrator? {
+        orderedMigratorsWithNextOperationAsLastElement.popLast()
+    }
+}
+
+
+
+// MARK: - Run
+
+internal extension MigratorChainQueue {
+    func migrationOperation() -> Operation {
+        Operation(running: self)
+    }
+}
+
+
+
+internal extension MigratorChainQueue {
+    final class Operation: Foundation.Operation {
+        
+        private let queue: MigratorChainQueue
+        
+        
+        init(running queue: MigratorChainQueue) {
+            self.queue = queue
+            
+            super.init()
+            super.qualityOfService = .userInitiated
+        }
+        
+        
+        override func main() {
+            queue.runOnThisThread()
+        }
+    }
+}
+
+
+
+private extension MigratorChainQueue {
+    
+    func runOnThisThread() throws {
+        let totalMigratorsAtStart: UInt = try migrationStartupCoordinatorQueue.sync {
+            guard case .notStarted = self.progress else {
+                throw StartError.migrationAlreadyUnderway
+            }
+            
+            let totalMigrators = UInt(self.orderedMigratorsWithNextOperationAsLastElement.count)
+            
+            self.progress = .running(totalMigrators: totalMigrators, completedMigrations: 0)
+            
+            return totalMigrators
+        }
+        
+        var successfulOrSkippedMigrations: UInt = 0
+        
+        
+        while let migrator = pop() {
+            switch migrator.migrate() {
+            case .success,
+                 .unnecessary:
+                successfulOrSkippedMigrations += 1
+                
+            case .failed(cause: let cause):
+                self.progress = .failed(cause: cause, totalMigrators: totalMigratorsAtStart, successes: successfulOrSkippedMigrations)
+                throw cause
+            }
+            
+            self.progress = .running(totalMigrators: totalMigratorsAtStart, completedMigrations: successfulOrSkippedMigrations)
+        }
+        
+        self.progress = .success(totalMigrations: totalMigratorsAtStart)
+    }
+    
+    
+    
+    /// Any error which occurs while migration is still starting up
+    enum StartError: Error {
+        case migrationAlreadyUnderway
     }
 }
