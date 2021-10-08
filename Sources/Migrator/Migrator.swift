@@ -65,13 +65,13 @@ public struct Migrator {
     ///   - migrationFunction:    The function which can perform the migration. Exactly how that is performed is up to this function.
     ///
     ///     This is intended to be run synchronously; it performs its work on the thread on which it was called, and then returns normally. The migration engine will ensure that is done in a performant way.
-    public init<ID: Hashable>(family: ID, oldExecutableVersion: SemVer, newExecutableVersion: SemVer, migrationFunction: @escaping MigrationFunction) {
+    public init(domain: AnyHashable, oldExecutableVersion: SemVer, newExecutableVersion: SemVer, migrationFunction: @escaping MigrationFunction) {
         
         guard oldExecutableVersion < newExecutableVersion else {
             preconditionFailure("Old version must be older than new version")
         }
         
-        self.migratorDomain = family.hashValue
+        self.migratorDomain = domain.hashValue
         self.oldExecutableVersion = oldExecutableVersion
         self.newExecutableVersion = newExecutableVersion
         self.migrationFunction = migrationFunction

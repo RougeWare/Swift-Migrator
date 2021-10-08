@@ -29,12 +29,30 @@
         }
       },
       {
+        "package": "LazyContainers",
+        "repositoryURL": "https://github.com/RougeWare/Swift-Lazy-Containers.git",
+        "state": {
+          "branch": null,
+          "revision": "6981fb17266a8d59e27d44f9611954fd7d45cd7b",
+          "version": "4.0.0"
+        }
+      },
+      {
         "package": "SemVer",
         "repositoryURL": "https://github.com/RougeWare/Swift-SemVer.git",
         "state": {
           "branch": null,
           "revision": "a82c49bf66f24bbe88a5e732c6f8304c6d4edf84",
           "version": "3.0.0-Alpha.7"
+        }
+      },
+      {
+        "package": "SimpleLogging",
+        "repositoryURL": "https://github.com/RougeWare/Swift-Simple-Logging.git",
+        "state": {
+          "branch": null,
+          "revision": "efdee028f383b0f3c39646a76e16bdd30693f53b",
+          "version": "0.5.2"
         }
       }
     ]
