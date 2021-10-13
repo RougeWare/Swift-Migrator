@@ -3,6 +3,7 @@
 //  Migrator
 //
 //  Created by Ky Leggiero on 2021-09-20.
+//  Copyright © 2021 Ky Leggiero BH-1-PS.
 //
 
 import Combine
@@ -21,7 +22,7 @@ public final class MigrationEngine {
     
     private let id = UUID()
     
-    private var sortedMigratorPool = SortedArray<Migrator>(areInIncreasingOrder: >)
+    private var sortedMigratorPool = SortedArray<Migrator>(areInIncreasingOrder: <)
     
     private let migrationStartupCoordinatorQueue: DispatchQueue
     private let migrationPerformerQueue: DispatchQueue
@@ -121,41 +122,41 @@ public extension MigrationEngine {
         let progressPublisher = createNewProgressPublisher()
         
         defer {
-        migrationPerformerQueue.async {
-            
-            self.migrationUnderwaySubscriber = progressPublisher
-                .filter(\.isDone)
-                .receive(on: self.migrationStartupCoordinatorQueue)
-                .sink { _ in
-                    self.isMigrationUnderway = false
+            migrationPerformerQueue.async {
+                
+                self.migrationUnderwaySubscriber = progressPublisher
+                    .filter(\.isDone)
+                    .receive(on: self.migrationStartupCoordinatorQueue)
+                    .sink { _ in
+                        self.isMigrationUnderway = false
+                    }
+                
+                let migratorQueues: [MigratorChainQueue]
+                
+                do {
+                    migratorQueues = try self.assembleMigratorQueues(from: oldExecutableVersion)
                 }
-            
-            let migratorQueues: [MigratorChainQueue]
-            
-            do {
-                migratorQueues = try self.assembleMigratorQueues(from: oldExecutableVersion)
-            }
-            catch {
-                log(error: error, "Unable to generate migrator queues")
-                assertionFailure()
-                return
-            }
-            
-            let operationQueue = OperationQueue()
-            operationQueue.qualityOfService = .userInitiated
-            
-            for migratorQueue in migratorQueues {
-                guard let newOperation = migratorQueue.migrationOperation(
-                    publishingUpdatesTo: self.createMigrationChainQueueProgressSubscriber(for: migratorQueue.id))
-                else {
-                    continue
+                catch {
+                    log(error: error, "Unable to generate migrator queues")
+                    assertionFailure()
+                    return
                 }
                 
-                operationQueue.addOperation(newOperation)
+                let operationQueue = OperationQueue()
+                operationQueue.qualityOfService = .userInitiated
+                
+                for migratorQueue in migratorQueues {
+                    guard let newOperation = migratorQueue.migrationOperation(
+                        publishingUpdatesTo: self.createMigrationChainQueueProgressSubscriber(for: migratorQueue.id))
+                    else {
+                        continue
+                    }
+                    
+                    operationQueue.addOperation(newOperation)
+                }
+                
+                operationQueue.waitUntilAllOperationsAreFinished()
             }
-            
-            operationQueue.waitUntilAllOperationsAreFinished()
-        }
         }
         
         return progressPublisher
@@ -201,12 +202,55 @@ public extension MigrationEngine.Progress {
 
 
 
+extension MigrationEngine.Progress: Equatable {
+    
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        func impl() -> Bool {
+            switch lhs {
+            case .starting:
+                if case .starting = rhs { return true }
+                else { return false }
+                
+                
+            case .migrating(totalMigratorCount: let lhsMigratorCount, successCount: let lhsSuccessCount, skipCount: let skipCount, failureCount: let failureCount):
+                if case .migrating(totalMigratorCount: lhsMigratorCount, successCount: lhsSuccessCount, skipCount: skipCount, failureCount: failureCount) = rhs {
+                    return true
+                }
+                else { return false }
+                
+                
+            case .done(migrationsAttemtped: let lhsMigrationsAttempted, failures: let lhsFailures):
+                switch rhs {
+                case .done(migrationsAttemtped: lhsMigrationsAttempted, failures: let rhsFailures)
+                    where lhsFailures.count == rhsFailures.count:
+                    for (lhsFailure, rhsFailure) in zip(lhsFailures, rhsFailures) {
+                        guard (lhsFailure as NSError) == (rhsFailure as NSError) else {
+                            return false
+                        }
+                    }
+                    
+                    return true
+                    
+                default:
+                    return false
+                }
+            }
+        }
+        
+        let equality = impl()
+        // print(equality ? "\n\n==" : "\n\n!=", lhs, rhs, separator: "\n\t")
+        return equality
+    }
+}
+
+
+
 private extension MigrationEngine {
     
     /// Resets progress and returns the new progress publisher, destroying the previous one
     func createNewProgressPublisher() -> ProgressPublisher {
         _progress = .init(initialValue: .starting)
-        return $progress.eraseToAnyPublisher()
+        return $progress.removeDuplicates().eraseToAnyPublisher()
     }
     
     
@@ -223,54 +267,76 @@ private extension MigrationEngine {
     
     func rebuildProgress() {
         migrationProgressExclusiveAccessQueue.async {
-            let summary = self.progressBuilder.values.reduce(
-                into: ProgressSummary(completedChainQueuesCount: 0,
-                                      totalMigrators: 0,
-                                      successCount: 0,
-                                      failures: []))
-            { summary, chainQueueProgress in
-                switch chainQueueProgress {
-                case .notStarted:
-                    break
-                    
-                case .running(totalMigrators: let totalMigrators, completedMigrations: let completedMigrations):
-                    summary.totalMigrators += totalMigrators
-                    summary.successCount += completedMigrations
-                    
-                case .success(totalMigrations: let totalMigrations):
-                    summary.completedChainQueuesCount += 1
-                    summary.totalMigrators += totalMigrations
-                    summary.successCount += 1
-                    
-                case .failed(cause: let cause, totalMigrators: let totalMigrators, successes: let successes):
-                    summary.completedChainQueuesCount += 1
-                    summary.successCount += successes
-                    summary.failures.append(cause)
-                    summary.totalMigrators += totalMigrators
-                }
+            self.progress = self.buildProgressOnThisThread()
+        }
+    }
+    
+    
+    private func buildProgressOnThisThread() -> Progress {
+        
+        let progressBuilder = self.progressBuilder
+        
+        func impl() -> Progress {
+        let summary = progressBuilder.values.reduce(
+            into: ProgressSummary(completedChainQueuesCount: 0,
+                                  totalMigrators: 0,
+                                  successCount: 0,
+                                  failures: []))
+        { summary, chainQueueProgress in
+            switch chainQueueProgress {
+            case .notStarted:
+                break
+                
+            case .running(totalMigrators: let totalMigrators, completedMigrations: let completedMigrations):
+                summary.totalMigrators += totalMigrators
+                summary.successCount += completedMigrations
+                
+            case .success(totalMigrations: let totalMigrations):
+                summary.completedChainQueuesCount += 1
+                summary.totalMigrators += totalMigrations
+                summary.successCount += 1
+                
+            case .failed(cause: let cause, totalMigrators: let totalMigrators, successes: let successes):
+                summary.completedChainQueuesCount += 1
+                summary.successCount += successes
+                summary.failures.append(cause)
+                summary.totalMigrators += totalMigrators
             }
-            
+        }
+        
             switch summary {
             case (completedChainQueuesCount: 0,
-                  totalMigrators: let totalMigrators,
-                  successCount: _,
-                  failures: _):
-                self.progress = .migrating(totalMigratorCount: totalMigrators, successCount: 0, skipCount: 0, failureCount: 0)
+                  totalMigrators: 0,
+                  successCount: 0,
+                  failures: let failures)
+                where failures.isEmpty:
+                return .starting
                 
-            case (completedChainQueuesCount: .init(self.progressBuilder.values.count),
+            case (completedChainQueuesCount: 0,
+                  totalMigrators: let totalMigrators,
+                  successCount: let successCount,
+                  failures: _):
+                return .migrating(totalMigratorCount: totalMigrators, successCount: successCount, skipCount: 0, failureCount: 0)
+                
+            case (completedChainQueuesCount: .init(progressBuilder.values.count),
                   totalMigrators: let totalMigrators,
                   successCount: _,
                   failures: let failures):
                 // All migrations have been attempted; it's done!
-                self.progress = .done(migrationsAttemtped: totalMigrators, failures: failures)
+                return .done(migrationsAttemtped: totalMigrators, failures: failures)
                 
             case (completedChainQueuesCount: _,
                   totalMigrators: let totalMigrators,
                   successCount: let successCount,
                   failures: let failures):
-                self.progress = .migrating(totalMigratorCount: totalMigrators, successCount: successCount, skipCount: 0, failureCount: .init(failures.count))
+                return .migrating(totalMigratorCount: totalMigrators, successCount: successCount, skipCount: 0, failureCount: .init(failures.count))
             }
         }
+        
+        
+        let progress = impl()
+        // print("\n\nProgress built:", progressBuilder, progress, separator: "\n\t")
+        return progress
     }
     
     
@@ -294,8 +360,7 @@ private extension MigrationEngine {
                 }
             }
             else {
-                let chainQueue = MigratorChainQueue(oldestMigrator: migrator)
-                queues[migrator.migratorDomain] = chainQueue
+                queues[migrator.migratorDomain] = MigratorChainQueue(oldestMigrator: migrator)
             }
         }
         

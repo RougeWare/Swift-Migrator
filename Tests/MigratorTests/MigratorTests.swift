@@ -1,3 +1,11 @@
+//
+//  MigratorTests.swift
+//  Migrator
+//
+//  Created by Ky Leggiero on 2021-09-20.
+//  Copyright © 2021 Ky Leggiero BH-1-PS.
+//
+
 import XCTest
 import SemVer
 import FunctionTools
@@ -17,35 +25,50 @@ final class MigratorTests: XCTestCase {
     static let data3 = TestData(version: SemVer(1,1,0), fibonacci: [0, 1, 1, 2, 3, 5, 8, 13])
     static let data4 = TestData(version: SemVer(2,0,0), fibonacci:    [1, 1, 2, 3, 5, 8, 13, 21])
     
-    var currentFibonacci = [Int]()
+    var currentFibonacci = [Int]() {
+        didSet {
+            print(currentFibonacci)
+            fibonacciHistory.append(currentFibonacci)
+        }
+    }
+    
+    var fibonacciHistory = [[Int]]()
     
     var migrator1, migrator2, migrator3: Migrator!
     
     
-    override init() {
-        
-        super.init()
+    override func setUp() {
+        fibonacciHistory = []
+        currentFibonacci = Self.data1.fibonacci
         
         migrator1 = Migrator(domain: Self.domain, oldExecutableVersion: Self.data1.version, newExecutableVersion: Self.data2.version) {
+            self.wait()
             self.currentFibonacci.insert(0, at: self.currentFibonacci.startIndex)
             return .success
         }
         
-        migrator2 = Migrator(domain: Self.domain, oldExecutableVersion: Self.data2.version, newExecutableVersion: Self.data2.version) {
+        migrator2 = Migrator(domain: Self.domain, oldExecutableVersion: Self.data2.version, newExecutableVersion: Self.data3.version) {
+            self.wait()
             self.currentFibonacci.append(13)
             return .success
         }
         
         migrator3 = Migrator(domain: Self.domain, oldExecutableVersion: Self.data3.version, newExecutableVersion: Self.data4.version) {
-            self.currentFibonacci.removeFirst()
-            self.currentFibonacci.append(21)
+            var newFibonacci = self.currentFibonacci
+            newFibonacci.removeFirst()
+            self.wait()
+            newFibonacci.append(21)
+            self.currentFibonacci = newFibonacci
             return .success
         }
     }
     
     
-    override func setUp() {
-        self.currentFibonacci = Self.data1.fibonacci
+    override func invokeTest() {
+        for run in 1...15 {
+            print("\n\n====", Self.className(), "run #\(run)", "====\n\n")
+            super.invokeTest()
+        }
     }
     
     
@@ -68,56 +91,52 @@ final class MigratorTests: XCTestCase {
                 }
             }
         
-        wait(for: [expectation], timeout: 2)
+        wait(for: [expectation], timeout: 10)
         
         blackhole(progressSink)
         
-        XCTAssertEqual(progressReport, [
-            .starting,
-            .migrating(totalMigratorCount: 3, successCount: 0, skipCount: 0, failureCount: 0),
-            .migrating(totalMigratorCount: 3, successCount: 1, skipCount: 0, failureCount: 0),
-            .migrating(totalMigratorCount: 3, successCount: 2, skipCount: 0, failureCount: 0),
-            .migrating(totalMigratorCount: 3, successCount: 3, skipCount: 0, failureCount: 0),
-            .done(migrationsAttemtped: 3, failures: []),
-        ])
+        let possibleExpectedReports: [[MigrationEngine.Progress]] = [
+            [
+                .starting,
+                .migrating(totalMigratorCount: 3, successCount: 0, skipCount: 0, failureCount: 0),
+                .migrating(totalMigratorCount: 3, successCount: 1, skipCount: 0, failureCount: 0),
+                .migrating(totalMigratorCount: 3, successCount: 2, skipCount: 0, failureCount: 0),
+                .done(migrationsAttemtped: 3, failures: []),
+            ],
+            [
+                .starting,
+                .migrating(totalMigratorCount: 3, successCount: 0, skipCount: 0, failureCount: 0),
+                .migrating(totalMigratorCount: 3, successCount: 1, skipCount: 0, failureCount: 0),
+                .migrating(totalMigratorCount: 3, successCount: 2, skipCount: 0, failureCount: 0),
+                .migrating(totalMigratorCount: 3, successCount: 3, skipCount: 0, failureCount: 0),
+                .done(migrationsAttemtped: 3, failures: []),
+            ],
+        ]
+        
+        XCTAssertTrue(possibleExpectedReports.contains(progressReport), "Progress report invalid: \(progressReport)")
         
         XCTAssertEqual(currentFibonacci, Self.data4.fibonacci)
+        
+        XCTAssertEqual(fibonacciHistory, [
+            Self.data1.fibonacci,
+            Self.data2.fibonacci,
+            Self.data3.fibonacci,
+            Self.data4.fibonacci,
+        ])
     }
-}
-
-
-
-extension MigrationEngine.Progress: Equatable {
     
-    public static func == (lhs: Self, rhs: Self) -> Bool {
-        switch lhs {
-        case .starting:
-            if case .starting = rhs { return true }
-            else { return false }
-            
-            
-        case .migrating(totalMigratorCount: let lhsMigratorCount, successCount: let lhsSuccessCount, skipCount: let skipCount, failureCount: let failureCount):
-            if case .migrating(totalMigratorCount: lhsMigratorCount, successCount: lhsSuccessCount, skipCount: skipCount, failureCount: failureCount) = rhs {
-                return true
-            }
-            else { return false }
-            
-            
-        case .done(migrationsAttemtped: let lhsMigrationsAttempted, failures: let lhsFailures):
-            switch rhs {
-            case .done(migrationsAttemtped: lhsMigrationsAttempted, failures: let rhsFailures)
-                where lhsFailures.count == rhsFailures.count:
-                for (lhsFailure, rhsFailure) in zip(lhsFailures, rhsFailures) {
-                    guard (lhsFailure as NSError) == (rhsFailure as NSError) else {
-                        return false
-                    }
-                }
-                
-                return true
-                
-            default:
-                return false
-            }
+    
+    
+    private let waitQueue = DispatchQueue(label: "wait", qos: .userInteractive)
+    
+    
+    private func wait(_ timeout: TimeInterval = 0.5) {
+        let semaphore = DispatchSemaphore(value: 0)
+        
+        waitQueue.schedule(after: .init(.now() + timeout), tolerance: 0, options: .init(qos: .userInteractive, flags: [.barrier, .enforceQoS], group: nil)) {
+            semaphore.signal()
         }
+        
+        semaphore.wait()
     }
 }

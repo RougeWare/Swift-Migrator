@@ -25,7 +25,7 @@ let package = Package(
         .package(name: "FunctionTools",  url: "https://github.com/RougeWare/Swift-Function-Tools.git", from: "1.2.3"),
         .package(name: "LazyContainers", url: "https://github.com/RougeWare/Swift-Lazy-Containers.git", from: "4.0.0"),
         .package(name: "SimpleLogging",  url: "https://github.com/RougeWare/Swift-Simple-Logging.git", from: "0.5.2"),
-        .package(name: "SemVer",         url: "https://github.com/RougeWare/Swift-SemVer.git", from: "3.0.0-Alpha.7"),
+        .package(name: "SemVer",         url: "https://github.com/RougeWare/Swift-SemVer.git", from: "3.0.0-Beta.3"),
         .package(name: "SortedArray",    url: "https://github.com/ole/SortedArray.git", from: "0.7.0"),
     ],
     targets: [
