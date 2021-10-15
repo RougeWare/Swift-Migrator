@@ -255,6 +255,11 @@ internal extension MigratorChainQueue {
         }
         
         
+        /// Creates a new migrator chain queue operation
+        ///
+        /// - Parameters:
+        ///   - queue:      The chain queue which performs the migration from within this operation
+        ///   - subscriber: The subscriber to which this will publish the chain queue's progress updates
         fileprivate init(running queue: MigratorChainQueue, publishingUpdatesTo subscriber: ProgressSubscriber) {
             self.queue = queue
             self.queue.$progress.receive(subscriber: subscriber)

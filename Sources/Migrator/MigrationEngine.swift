@@ -19,16 +19,30 @@ import SortedArray
 /// Coordinates all migrations in parallel, across any migrator families
 public final class MigrationEngine {
     
+    /// Uniquely identifies this migration engine instance at runtime
     private let id = UUID()
     
+    /// All migrators registered with this engine, automatically sorted by their `oldExecutableVersion`
     private var sortedMigratorPool = SortedArray<Migrator>(areInIncreasingOrder: <)
     
+    
+    /// The dispatch queue which coordinates startup duties. This helps ensure startup only occurs once and in the right order.
     private let migrationStartupCoordinatorQueue: DispatchQueue
+    
+    /// The dispatch queue which actually performs migration. This also helps ensure that only one batch of migrations occurs at a time.
+    /// - SeeAlso: `isMigrationUnderway`
     private let migrationPerformerQueue: DispatchQueue
+    
+    /// The dispatch queue which ensures that the progress is only ever written to by one queue
     private let migrationProgressExclusiveAccessQueue: DispatchQueue
     
+    
+    /// Tracks whether migration is underway to help ensure only one batch of migrations occurs at a time.
+    /// - SeeAlso: `migrationPerformerQueue`
     private var isMigrationUnderway = false
     
+    
+    /// Tracks this engine's current progress. This is published publicly to whoever calls `performMigration`
     @Published
     private var progress = Progress.starting
     
@@ -39,6 +53,8 @@ public final class MigrationEngine {
         }
     }
     
+    
+    /// Leverages the predictability of Combine to ensure that `isMigrationUnderway` is correctly set
     private var migrationUnderwaySubscriber: AnyCancellable?
     
     
@@ -108,6 +124,26 @@ public extension MigrationEngine {
     ///
     /// - Returns: A publisher which will send progress updates to subscribers
     func performMigration(from oldExecutableVersion: SemVer, to newExecutableVersion: SemVer) throws -> ProgressPublisher {
+        
+        /// Creates a new subscriber to the progress value of the migrator chain queue with the given ID.
+        ///
+        /// The returned subscriber automatically updates this migration engine's progress value.
+        ///
+        /// That subscriber is meant to be passed to something which publishes updates from that same chain queue; this function does not look up a chain queue, nor does it attach this subscriber to one; it naïvely assumes it will be used for listening to the chain queue with the given ID.
+        ///
+        /// - Parameter chainQueueId: The ID of the chain queue whose progress you want to subscribe to
+        /// - Returns: A new subscriber which will receive a migration chain queue's progress value and use it to auto-update the progress in the current migration engine
+        func createMigrationChainQueueProgressSubscriber(for chainQueueId: MigratorChainQueue.ID) -> MigratorChainQueue.ProgressSubscriber {
+            AnySubscriber(Subscribers.Sink { completion in
+                    assertionFailure("No defined action for completion: \(completion)")
+                }
+                receiveValue: { progress in
+                    self.progressBuilder[chainQueueId] = progress
+                }
+            )
+        }
+        
+        
         try migrationStartupCoordinatorQueue.sync {
             guard !isMigrationUnderway else {
                 throw StartError.migrationAlreadyUnderway
@@ -121,7 +157,7 @@ public extension MigrationEngine {
         let progressPublisher = createNewProgressPublisher()
         
         defer {
-            migrationPerformerQueue.async {
+            migrationPerformerQueue.async { [self] in
                 
                 self.migrationUnderwaySubscriber = progressPublisher
                     .filter(\.isDone)
@@ -146,7 +182,7 @@ public extension MigrationEngine {
                 
                 for migratorQueue in migratorQueues {
                     guard let newOperation = migratorQueue.migrationOperation(
-                        publishingUpdatesTo: self.createMigrationChainQueueProgressSubscriber(for: migratorQueue.id))
+                        publishingUpdatesTo: createMigrationChainQueueProgressSubscriber(for: migratorQueue.id))
                     else {
                         continue
                     }
@@ -179,6 +215,7 @@ public extension MigrationEngine {
     
     
     
+    /// The type of publisher which publishes the current progress value of a migration engine
     typealias ProgressPublisher = AnyPublisher<Progress, Never>
 }
 
@@ -204,6 +241,7 @@ public extension MigrationEngine.Progress {
 extension MigrationEngine.Progress: Equatable {
     
     public static func == (lhs: Self, rhs: Self) -> Bool {
+        /// Assists debugging, allowing the resulting value to be printed before this function returns
         func impl() -> Bool {
             switch lhs {
             case .starting:
@@ -253,17 +291,7 @@ private extension MigrationEngine {
     }
     
     
-    func createMigrationChainQueueProgressSubscriber(for chainQueueId: MigratorChainQueue.ID) -> MigratorChainQueue.ProgressSubscriber {
-        AnySubscriber(Subscribers.Sink { completion in
-                assertionFailure("No defined action for completion: \(completion)")
-            }
-            receiveValue: { progress in
-                self.progressBuilder[chainQueueId] = progress
-            }
-        )
-    }
-    
-    
+    /// Builds a new progress value and assigns it to this engine's progress value, implicitly publishing it to all subscribers.
     func rebuildProgress() {
         migrationProgressExclusiveAccessQueue.async {
             self.progress = self.buildProgressOnThisThread()
@@ -271,10 +299,16 @@ private extension MigrationEngine {
     }
     
     
+    /// Uses this engine's `progressBuilder` to build a new `Progress` value, and performs that building immediately, blocking this thread.
+    ///
+    /// When there are many migrators, this process might take a notable amount of time. To perform this asynchronously, call `rebuildProgress()` instead.
+    ///
+    /// - Returns: The `Progress` value reflecting this engine's current progress
     private func buildProgressOnThisThread() -> Progress {
         
         let progressBuilder = self.progressBuilder
         
+        /// Assists debugging, allowing the resulting value to be printed before this function returns
         func impl() -> Progress {
         let summary = progressBuilder.values.reduce(
             into: ProgressSummary(completedChainQueuesCount: 0,
@@ -378,6 +412,7 @@ private extension MigrationEngine {
     
     
     
+    /// Assists in summarizing `progressBuilder` into a `Progress` value
     private typealias ProgressSummary = (completedChainQueuesCount: UInt,
                                          totalMigrators: UInt,
                                          successCount: UInt,

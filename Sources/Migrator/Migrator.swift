@@ -53,7 +53,7 @@ public struct Migrator {
     ///     This value is necessary for chaining together multiple migrators. For example, you might have two sets of migrators: five for the User Profile and three for the Metadata Database. Both of these might migrate a `[String : Any]` dictionary, but it wouldn't make sense to migrate MyApp `1.2.3`'s User Info to MyApp `2.0.0`'s Metadata Database. This ensures that such a thing never happens.
     ///
     ///
-    ///   - oldExecutableVersion: The oldest possible version of the old executable from which data might be migrated. This **must** be less than `oldExecutableVersion`; otherwise, a precondition failure is triggered and the process will crash.
+    ///   - oldExecutableVersion: The oldest possible version of the old executable from which data might be migrated. This **must** be less than `newExecutableVersion`; otherwise, a precondition failure is triggered and the process will crash.
     ///
     ///     For example, if this migrator is in charge of migrating `struct Foo` in app version `1.2.3` to `struct Bar` in app version `2.0.0`, this value is `1.2.3`
     ///
