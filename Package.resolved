@@ -1,0 +1,52 @@
+{
+  "object": {
+    "pins": [
+      {
+        "package": "SortedArray",
+        "repositoryURL": "https://github.com/ole/SortedArray.git",
+        "state": {
+          "branch": null,
+          "revision": "a521f750fccb0743ad082b7cb890a62e132c4fbf",
+          "version": "0.7.0"
+        }
+      },
+      {
+        "package": "FunctionTools",
+        "repositoryURL": "https://github.com/RougeWare/Swift-Function-Tools.git",
+        "state": {
+          "branch": null,
+          "revision": "0bd76ca2c00120acf7ff840b5dcc1e700870ae22",
+          "version": "1.2.3"
+        }
+      },
+      {
+        "package": "LazyContainers",
+        "repositoryURL": "https://github.com/RougeWare/Swift-Lazy-Containers.git",
+        "state": {
+          "branch": null,
+          "revision": "6981fb17266a8d59e27d44f9611954fd7d45cd7b",
+          "version": "4.0.0"
+        }
+      },
+      {
+        "package": "SemVer",
+        "repositoryURL": "https://github.com/RougeWare/Swift-SemVer.git",
+        "state": {
+          "branch": null,
+          "revision": "e8faad3af3e87ce6bf2117340894fa1c7d85a1bb",
+          "version": "3.0.0-Beta.3"
+        }
+      },
+      {
+        "package": "SimpleLogging",
+        "repositoryURL": "https://github.com/RougeWare/Swift-Simple-Logging.git",
+        "state": {
+          "branch": null,
+          "revision": "efdee028f383b0f3c39646a76e16bdd30693f53b",
+          "version": "0.5.2"
+        }
+      }
+    ]
+  },
+  "version": 1
+}
