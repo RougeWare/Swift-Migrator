@@ -21,7 +21,6 @@ let package = Package(
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
-        .package(name: "Atomic",         url: "https://github.com/RougeWare/Swift-Atomic.git", from: "0.2.0"),
         .package(name: "FunctionTools",  url: "https://github.com/RougeWare/Swift-Function-Tools.git", from: "1.2.3"),
         .package(name: "LazyContainers", url: "https://github.com/RougeWare/Swift-Lazy-Containers.git", from: "4.0.0"),
         .package(name: "SimpleLogging",  url: "https://github.com/RougeWare/Swift-Simple-Logging.git", from: "0.5.2"),
@@ -34,7 +33,6 @@ let package = Package(
         .target(
             name: "Migrator",
             dependencies: [
-                "Atomic",
                 "FunctionTools",
                 "LazyContainers",
                 "SimpleLogging",

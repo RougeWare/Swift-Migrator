@@ -9,7 +9,6 @@
 import Combine
 import Foundation
 
-import Atomic
 import FunctionTools
 import SemVer
 import SimpleLogging

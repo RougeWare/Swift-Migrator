@@ -65,7 +65,7 @@ final class MigratorTests: XCTestCase {
     
     
     override func invokeTest() {
-        for run in 1...15 {
+        for run in 1...10 {
             print("\n\n====", Self.className(), "run #\(run)", "====\n\n")
             super.invokeTest()
         }
@@ -83,6 +83,63 @@ final class MigratorTests: XCTestCase {
         let expectation = expectation(description: "Migration")
         
         let progressSink = try engine.performMigration(from: Self.data1.version, to: Self.data4.version)
+            .sink { progress in
+                progressReport.append(progress)
+                
+                if case .done = progress {
+                    expectation.fulfill()
+                }
+            }
+        
+        wait(for: [expectation], timeout: 10)
+        
+        blackhole(progressSink)
+        
+        let possibleExpectedReports: [[MigrationEngine.Progress]] = [
+            [
+                .starting,
+                .migrating(totalMigratorCount: 3, successCount: 0, skipCount: 0, failureCount: 0),
+                .migrating(totalMigratorCount: 3, successCount: 1, skipCount: 0, failureCount: 0),
+                .migrating(totalMigratorCount: 3, successCount: 2, skipCount: 0, failureCount: 0),
+                .done(migrationsAttemtped: 3, failures: []),
+            ],
+            [
+                .starting,
+                .migrating(totalMigratorCount: 3, successCount: 0, skipCount: 0, failureCount: 0),
+                .migrating(totalMigratorCount: 3, successCount: 1, skipCount: 0, failureCount: 0),
+                .migrating(totalMigratorCount: 3, successCount: 2, skipCount: 0, failureCount: 0),
+                .migrating(totalMigratorCount: 3, successCount: 3, skipCount: 0, failureCount: 0),
+                .done(migrationsAttemtped: 3, failures: []),
+            ],
+        ]
+        
+        XCTAssertTrue(possibleExpectedReports.contains(progressReport), "Progress report invalid: \(progressReport)")
+        
+        XCTAssertEqual(currentFibonacci, Self.data4.fibonacci)
+        
+        XCTAssertEqual(fibonacciHistory, [
+            Self.data1.fibonacci,
+            Self.data2.fibonacci,
+            Self.data3.fibonacci,
+            Self.data4.fibonacci,
+        ])
+    }
+    
+    
+    func testSimple_fullMigration_currentVersionNewerThanNewestMigrator() throws {
+        
+        let engine = MigrationEngine()
+        
+        engine.register(migrators: migrator1, migrator2, migrator3)
+        
+        var progressReport = [MigrationEngine.Progress]()
+        
+        let expectation = expectation(description: "Migration")
+        
+        var newVersion = Self.data4.version
+        newVersion.minor += 4
+        
+        let progressSink = try engine.performMigration(from: Self.data1.version, to: newVersion)
             .sink { progress in
                 progressReport.append(progress)
                 

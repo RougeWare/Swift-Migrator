@@ -9,7 +9,6 @@
 import Combine
 import Foundation
 
-import Atomic
 import SemVer
 import SimpleLogging
 
@@ -299,7 +298,6 @@ private extension MigratorChainQueue {
             return totalMigrators
         }
         
-        @Atomic
         var successfulOrSkippedMigrations: UInt = 0
         
         while let migrator = _unsafe_popNextMigrator() {

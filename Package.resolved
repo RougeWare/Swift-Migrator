@@ -11,15 +11,6 @@
         }
       },
       {
-        "package": "Atomic",
-        "repositoryURL": "https://github.com/RougeWare/Swift-Atomic.git",
-        "state": {
-          "branch": null,
-          "revision": "9e272359c739faefcbe4d45a42a6ad09afb8d13e",
-          "version": "0.2.0"
-        }
-      },
-      {
         "package": "FunctionTools",
         "repositoryURL": "https://github.com/RougeWare/Swift-Function-Tools.git",
         "state": {
