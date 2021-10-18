@@ -58,7 +58,7 @@ public final class MigrationEngine {
     private var migrationUnderwaySubscriber: AnyCancellable?
     
     
-    init() {
+    public init() {
         migrationStartupCoordinatorQueue = DispatchQueue(label: "MigrationEngine startup coordinator queue \(id)")
         migrationPerformerQueue = DispatchQueue(label: "MigrationEngine performer queue \(id)")
         migrationProgressExclusiveAccessQueue = DispatchQueue(label: "MigrationEngine progress exclusive access \(id)", qos: .userInteractive)
