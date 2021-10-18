@@ -9,7 +9,7 @@
 import XCTest
 import SemVer
 import FunctionTools
-@testable import Migrator
+import Migrator
 
 
 
